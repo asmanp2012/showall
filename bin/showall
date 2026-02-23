@@ -1,0 +1,217 @@
+#!/usr/bin/env bun
+
+// showall - Main script that orchestrates both collectors
+// Version: 2.0.0
+// Usage: showall [command] [directory]
+
+import { spawn, execSync } from 'child_process';
+import { existsSync, mkdirSync } from 'fs';
+// import { appendFile } from 'fs/promises';
+import { join, dirname } from 'path';
+import { homedir } from 'os';
+import { Logger } from '../lib/logger';
+// import config from '../config.json';
+import { ShowallFile, showall_files_version } from '../lib/showall_file';
+import { ShowallGit, showall_git_version } from '../lib/showall_git';
+
+// Initialize logger
+const logger = new Logger({
+    logFile: join(homedir(), `.showall.log`)
+});
+
+// Script configuration
+const SCRIPT_NAME = "showall";
+const SCRIPT_VERSION = "2.0.0";
+const SCRIPT_DIR = dirname(process.argv[1]);
+
+
+// Default settings
+let VERBOSE = false;
+let QUIET = false;
+let FORCE = false;
+let OUTPUT_DIR = ".";
+
+
+function titleShowall() {
+    return logger.color('showall v' + SCRIPT_VERSION, 'CYAN');
+}
+
+// Show help
+function showHelp() {
+    console.log(`
+${titleShowall()} - Complete Project Analysis Tool
+
+${logger.color('Description:', 'GREEN')}
+  Collect and analyze Git repository information and project code files.
+  Combines both git and file collectors in one tool.
+
+${logger.color('Usage:', 'GREEN')}
+  showall [command] [options] [directory]
+
+${logger.color('Commands:', 'GREEN')}
+  git         Collect Git repository information only (using showall_git)
+  file        Collect project code files only (using showall_file)
+  all         Run both collectors (default)
+  help        Show this help message
+
+${logger.color('Options:', 'GREEN')}
+  -v, --verbose     Enable verbose output
+  -q, --quiet       Suppress non-error output
+  -o, --output DIR  Specify output directory (default: current directory)
+
+${logger.color('Examples:', 'GREEN')}
+  showall git                    # Git info from current directory
+  showall file /path/to/project  # Code from specific path
+  showall all -v                  # Everything with verbose output
+  showall git -o ./reports        # Save Git info to ./reports/
+
+${logger.color('Output files:', 'GREEN')}
+  Git collector (showall_git):  GIT_FULL_INFO_*_*.log
+  File collector (showall_file): PROJECT_FULL_*.log
+`);
+}
+
+// Show version
+function showVersion() {
+  console.log(`${SCRIPT_NAME} version ${SCRIPT_VERSION}`);
+  console.log(`Git collector (showall_git): ${showall_git_version}`);
+  console.log(`File collector (showall_file): ${showall_files_version}`);
+}
+
+// Parse command line arguments
+function parseArgs(args: string[]) {
+  let i = 0;
+  const positional: string[] = [];
+  // Parse command
+  let COMMAND = "file";
+  let TARGET_DIR = "";
+  const VALID_COMMANDS = ['git', 'file', 'all'];
+
+  while (i < args.length) {
+    const arg = args[i];
+    let argType = arg.split('=');
+
+    switch (argType[0]) {
+      case '-f':
+      case '--file':
+        COMMAND = 'file';
+        i++;
+        break;
+      case '-g':
+      case '--git':
+        COMMAND = 'git';
+        i++;
+        break;
+      case '-m':
+      case '--mode':
+        if(!(VALID_COMMANDS.includes(argType[1])) ) { 
+          throw new Error(
+            `Invalid or missing value for --mode. Please specify one of: ${VALID_COMMANDS.join(', ')}. Example: --mode=git`
+          );
+        }
+        COMMAND = argType[1];
+        i++;
+        break;
+      case '-t':
+      case '--target':
+        if (argType[1] == null) {
+          throw new Error(`Missing value for option: '${argType[0]}'`);
+        }
+
+        if (!existsSync(argType[1])) {
+          throw new Error(`Target directory does not exist: ${argType[1]}`);
+        }
+        TARGET_DIR = argType[1];
+        i++;
+        break;
+      case '-v':
+      case '--verbose':
+        VERBOSE = true;
+        logger.setVerbose(true);
+        i++;
+        break;
+      case '-q':
+      case '--quiet':
+        QUIET = true;
+        logger.setQuiet(true);
+        i++;
+        break;
+      case '-o':
+      case '--output':
+        if (argType[1] == null) {
+          throw new Error(`Missing value for option: '${argType[0]}'`);
+        }
+        OUTPUT_DIR = argType[1];
+        i++;
+        break;
+      case '-h':
+      case '--help':
+        showHelp();
+        process.exit(0);
+      case '--version':
+        showVersion();
+        process.exit(0);
+      default:
+        if (arg.startsWith('-')) {
+          logger.error(`Unknown option: ${arg}`);
+          showHelp();
+          process.exit(1);
+        }
+        positional.push(arg);
+        i++;
+    }
+  }
+
+  return { COMMAND, TARGET_DIR };
+
+}
+
+// Main function
+async function main() {
+    const args = process.argv.slice(2);
+    const { COMMAND, TARGET_DIR } = parseArgs(args);
+    
+    // Validate target directory if specified
+    let targetPath = TARGET_DIR;
+    if (targetPath) {
+        if (!existsSync(targetPath)) {
+            logger.error(`Directory does not exist: ${targetPath}`);
+            process.exit(1);
+        }
+        targetPath = execSync(`cd "${targetPath}" && pwd`, { encoding: 'utf8' }).trim();
+        logger.info(`Target directory: ${targetPath}`);
+    }
+    
+    // Handle output directory
+    let outputPath = OUTPUT_DIR;
+    if (outputPath !== ".") {
+        mkdirSync(outputPath, { recursive: true });
+        outputPath = execSync(`cd "${outputPath}" && pwd`, { encoding: 'utf8' }).trim();
+        logger.info(`Output directory: ${outputPath}`);
+    }
+    
+    // Run command
+    switch (COMMAND) {
+        case 'git':
+            await ShowallGit(targetPath, outputPath);
+            break;
+        case 'file':
+            await ShowallFile(targetPath, outputPath);
+            break;
+        case 'all':
+            await ShowallGit(targetPath, outputPath);
+            await ShowallFile(targetPath, outputPath);
+            break;
+        default:
+            logger.error(`Unknown command: ${COMMAND}`);
+            console.log('');
+            showHelp();
+            process.exit(1);
+    }
+}
+
+// Run main function
+main().catch(err => {
+    logger.error(`Unhandled error: ${err.message}`);
+    process.exit(1);
+});
