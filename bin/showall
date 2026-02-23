@@ -3,16 +3,17 @@
 // showall - Main script that orchestrates both collectors
 // Version: 2.0.0
 // Usage: showall [command] [directory]
-
-import { spawn, execSync } from 'child_process';
-import { existsSync, mkdirSync } from 'fs';
-// import { appendFile } from 'fs/promises';
-import { join, dirname } from 'path';
+import { $ } from "bun";
+import { join, dirname, resolve } from 'path';
 import { homedir } from 'os';
 import { Logger } from '../lib/logger';
 // import config from '../config.json';
 import { ShowallFile, showall_files_version } from '../lib/showall_file';
 import { ShowallGit, showall_git_version } from '../lib/showall_git';
+
+
+
+
 
 // Initialize logger
 const logger = new Logger({
@@ -79,7 +80,7 @@ function showVersion() {
 }
 
 // Parse command line arguments
-function parseArgs(args: string[]) {
+async function parseArgs(args: string[]) {
   let i = 0;
   const positional: string[] = [];
   // Parse command
@@ -118,10 +119,10 @@ function parseArgs(args: string[]) {
           throw new Error(`Missing value for option: '${argType[0]}'`);
         }
 
-        if (!existsSync(argType[1])) {
+        if (!resolve(argType[1])) {
           throw new Error(`Target directory does not exist: ${argType[1]}`);
         }
-        TARGET_DIR = argType[1];
+        TARGET_DIR = await $`cd "${argType[1]}" && pwd`.text();
         i++;
         break;
       case '-v':
@@ -141,7 +142,11 @@ function parseArgs(args: string[]) {
         if (argType[1] == null) {
           throw new Error(`Missing value for option: '${argType[0]}'`);
         }
-        OUTPUT_DIR = argType[1];
+
+        if (!resolve(argType[1])) {
+          throw new Error(`Output directory does not exist: ${argType[1]}`);
+        }
+        OUTPUT_DIR = await $`cd "${argType[1]}" && pwd`.text().trim();
         i++;
         break;
       case '-h':
@@ -161,6 +166,12 @@ function parseArgs(args: string[]) {
         i++;
     }
   }
+  if(TARGET_DIR == "")
+  {
+    TARGET_DIR = process.cwd();
+    TARGET_DIR = await $`cd "${TARGET_DIR}" && pwd`.text();
+  }
+  TARGET_DIR = TARGET_DIR.trim();
 
   return { COMMAND, TARGET_DIR };
 
@@ -168,27 +179,24 @@ function parseArgs(args: string[]) {
 
 // Main function
 async function main() {
-    const args = process.argv.slice(2);
-    const { COMMAND, TARGET_DIR } = parseArgs(args);
-    
-    // Validate target directory if specified
-    let targetPath = TARGET_DIR;
-    if (targetPath) {
-        if (!existsSync(targetPath)) {
-            logger.error(`Directory does not exist: ${targetPath}`);
-            process.exit(1);
-        }
-        targetPath = execSync(`cd "${targetPath}" && pwd`, { encoding: 'utf8' }).trim();
-        logger.info(`Target directory: ${targetPath}`);
+  const args = process.argv.slice(2);
+  const { COMMAND, TARGET_DIR } = await parseArgs(args);
+  // Validate target directory if specified
+  
+  let targetPath = TARGET_DIR;
+  if (targetPath) {
+    if (!resolve(targetPath)) {
+      logger.error(`Directory does not exist: ${targetPath}`);
+      process.exit(1);
     }
-    
-    // Handle output directory
-    let outputPath = OUTPUT_DIR;
-    if (outputPath !== ".") {
-        mkdirSync(outputPath, { recursive: true });
-        outputPath = execSync(`cd "${outputPath}" && pwd`, { encoding: 'utf8' }).trim();
-        logger.info(`Output directory: ${outputPath}`);
-    }
+    logger.info(`Target directory: ${targetPath}`);
+  }
+  
+  // Handle output directory
+  let outputPath = OUTPUT_DIR;
+  if (outputPath !== ".") {
+    logger.info(`Output directory: ${outputPath}`);
+  }
     
     // Run command
     switch (COMMAND) {
