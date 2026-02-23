@@ -172,7 +172,6 @@ async function parseArgs(args: string[]) {
     TARGET_DIR = await $`cd "${TARGET_DIR}" && pwd`.text();
   }
   TARGET_DIR = TARGET_DIR.trim();
-
   return { COMMAND, TARGET_DIR };
 
 }

@@ -31,14 +31,13 @@ async function execGitCommand(command: string, options: { silent?: boolean } = {
 
 // Check if directory is a git repository
 async function checkGitRepo(dir: string): Promise<boolean> {
-  console.log(dir);
   try {
     const command = `cd '${dir}' && git rev-parse --git-dir 2>/dev/null`;
-    const x = await execGitCommand(command, {silent: false})
-    return true;
+    await execGitCommand(command)
   } catch {
     return false;
   }
+  return true;
 }
 
 // Get repository name
