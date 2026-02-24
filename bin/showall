@@ -128,7 +128,7 @@ async function parseArgs(args: string[]) {
       case '-v':
       case '--verbose':
         VERBOSE = true;
-        logger.setVerbose(true);
+        logger.verbose = true;
         i++;
         break;
       case '-q':
@@ -188,33 +188,33 @@ async function main() {
       logger.error(`Directory does not exist: ${targetPath}`);
       process.exit(1);
     }
-    logger.info(`Target directory: ${targetPath}`);
+    // logger.info(`Target directory: ${targetPath}`);
   }
   
   // Handle output directory
   let outputPath = OUTPUT_DIR;
   if (outputPath !== ".") {
-    logger.info(`Output directory: ${outputPath}`);
+    // logger.info(`Output directory: ${outputPath}`); 
   }
     
-    // Run command
-    switch (COMMAND) {
-        case 'git':
-            await ShowallGit(targetPath, outputPath);
-            break;
-        case 'file':
-            await ShowallFile(targetPath, outputPath);
-            break;
-        case 'all':
-            await ShowallGit(targetPath, outputPath);
-            await ShowallFile(targetPath, outputPath);
-            break;
-        default:
-            logger.error(`Unknown command: ${COMMAND}`);
-            console.log('');
-            showHelp();
-            process.exit(1);
-    }
+  // Run command
+  switch (COMMAND) {
+    case 'git':
+      await ShowallGit(targetPath, outputPath);
+      break;
+    case 'file':
+      await ShowallFile(targetPath, outputPath);
+      break;
+    case 'all':
+      await ShowallGit(targetPath, outputPath);
+      await ShowallFile(targetPath, outputPath);
+      break;
+    default:
+      logger.error(`Unknown command: ${COMMAND}`);
+      logger.newLine();
+      showHelp();
+      process.exit(1);
+  }
 }
 
 // Run main function

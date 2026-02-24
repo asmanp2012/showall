@@ -14,21 +14,26 @@ export class Logger {
   };
 
   private quiet: boolean = false;
-  private verbose: boolean = false;
+  private verbose_: boolean = false;
   private logFile?: string;
+
+  set verbose(v: boolean) {
+    this.verbose_ = v;
+  }
+
+  get verbose(): boolean
+  {
+    return this.verbose_;
+  }
 
   constructor(options?: { quiet?: boolean; verbose?: boolean; logFile?: string }) {
     this.quiet = options?.quiet ?? false;
-    this.verbose = options?.verbose ?? false;
+    this.verbose_ = options?.verbose ?? false;
     this.logFile = options?.logFile;
   }
 
   setQuiet(quiet: boolean) {
     this.quiet = quiet;
-  }
-
-  setVerbose(verbose: boolean) {
-    this.verbose = verbose;
   }
 
   setLogFile(logFile: string) {
@@ -50,23 +55,44 @@ export class Logger {
     return `${color}[${level}]${this.colors.NC} ${msg}`;
   }
 
+  log(msg: string = '', ...args: any[]) {
+    if (!this.quiet) {
+      console.log(msg, ...args);
+      this.writeToLog('LOG', msg);
+    }
+  }
+
+  newLine(count: number = 1) {
+    if (this.quiet) return;
+    for (let i = 0; i < count; i++) {
+      this.log(`${this.colors.NC}`);
+    }
+  }
+
   info(msg: string, ...args: any[]) {
     if (!this.quiet) {
-      console.log(this.format('INFO', this.colors.BLUE, msg), ...args);
+      this.log(this.format('INFO', this.colors.BLUE, msg), ...args);
+      this.writeToLog('INFO', msg);
+    }
+  }
+
+  vinfo(msg: string, ...args: any[]) {
+    if (this.verbose_) {
+      this.log(this.format('INFO', this.colors.BLUE, msg), ...args);
       this.writeToLog('INFO', msg);
     }
   }
 
   success(msg: string, ...args: any[]) {
     if (!this.quiet) {
-      console.log(this.format('SUCCESS', this.colors.GREEN, msg), ...args);
+      this.log(this.format('SUCCESS', this.colors.GREEN, msg), ...args);
       this.writeToLog('SUCCESS', msg);
     }
   }
 
   warning(msg: string, ...args: any[]) {
     if (!this.quiet) {
-      console.log(this.format('WARNING', this.colors.YELLOW, msg), ...args);
+      this.log(this.format('WARNING', this.colors.YELLOW, msg), ...args);
       this.writeToLog('WARNING', msg);
     }
   }
@@ -77,23 +103,23 @@ export class Logger {
   }
 
   debug(msg: string, ...args: any[]) {
-    if (this.verbose) {
-      console.log(this.format('DEBUG', this.colors.MAGENTA, msg), ...args);
+    if (this.verbose_) {
+      this.log(this.format('DEBUG', this.colors.MAGENTA, msg), ...args);
       this.writeToLog('DEBUG', msg);
     }
   }
 
   header() {
     if (!this.quiet) {
-      console.log(`${this.colors.CYAN}════════════════════════════════════════${this.colors.NC}`);
+      this.log(`${this.colors.CYAN}════════════════════════════════════════${this.colors.NC}`);
     }
   }
 
   headerWithTitle(title: string) {
     if (!this.quiet) {
-      console.log(`${this.colors.CYAN}════════════════════════════════════════${this.colors.NC}`);
-      console.log(`${this.colors.CYAN}${title}${this.colors.NC}`);
-      console.log(`${this.colors.CYAN}════════════════════════════════════════${this.colors.NC}`);
+      this.log(`${this.colors.CYAN}════════════════════════════════════════${this.colors.NC}`);
+      this.log(`${this.colors.CYAN}${title}${this.colors.NC}`);
+      this.log(`${this.colors.CYAN}════════════════════════════════════════${this.colors.NC}`);
     }
   }
 
@@ -165,19 +191,19 @@ export class Logger {
 
     const separator = '+' + keys.map(k => '─'.repeat(colWidths[k] + 2)).join('+') + '+';
 
-    console.log(separator);
-    console.log('|' + keys.map(k =>
+    this.log(separator);
+    this.log('|' + keys.map(k =>
       ` ${k.padEnd(colWidths[k])} `
     ).join('|') + '|');
-    console.log(separator);
+    this.log(separator);
 
     data.forEach(row => {
-      console.log('|' + keys.map(k =>
+      this.log('|' + keys.map(k =>
         ` ${String(row[k] || '').padEnd(colWidths[k])} `
       ).join('|') + '|');
     });
 
-    console.log(separator);
+    this.log(separator);
   }
 
   group(label: string, collapsed: boolean = false) {
@@ -210,14 +236,9 @@ export class Logger {
     console.timeEnd(label);
   }
 
-  newLine(count: number = 1) {
-    if (this.quiet) return;
-    console.log('\n'.repeat(count - 1));
-  }
-
   divider(char: string = '─', length: number = 50) {
     if (this.quiet) return;
-    console.log(char.repeat(length));
+    this.log(char.repeat(length));
   }
 
   box(msg: string, title?: string) {
@@ -226,17 +247,17 @@ export class Logger {
     const lines = msg.split('\n');
     const width = Math.max(...lines.map(l => l.length), title?.length || 0) + 4;
 
-    console.log(`┌${'─'.repeat(width)}┐`);
+    this.log(`┌${'─'.repeat(width)}┐`);
 
     if (title) {
-      console.log(`│ ${title.padEnd(width - 2)} │`);
-      console.log(`├${'─'.repeat(width)}┤`);
+      this.log(`│ ${title.padEnd(width - 2)} │`);
+      this.log(`├${'─'.repeat(width)}┤`);
     }
 
     lines.forEach(line => {
-      console.log(`│ ${line.padEnd(width - 2)} │`);
+      this.log(`│ ${line.padEnd(width - 2)} │`);
     });
 
-    console.log(`└${'─'.repeat(width)}┘`);
+    this.log(`└${'─'.repeat(width)}┘`);
   }
 }

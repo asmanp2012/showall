@@ -14,7 +14,10 @@ const SCRIPT_VERSION = "2.0.0";
 let logger: Logger;
 
 // Execute git command and return output
-async function execGitCommand(command: string, options: { silent?: boolean } = {}): Promise<string> {
+async function execGitCommand(
+  command: string,
+  options: { silent?: boolean } = {}
+): Promise<string> {
   try {
     // برای دستورات git باید از bash استفاده کنیم
     const result = await $`bash -c ${command}`.text();
@@ -140,6 +143,7 @@ async function showStagedChanges(dir: string): Promise<{ hasFiles: boolean; outp
     let output = '### 📌 STAGED CHANGES (ready to commit)\n\n';
     output += `📁 Files staged for commit (${staged.length} files):\n`;
     output += await listFilesWithStatus(dir, staged, 'staged');
+    
     output += '\n\n📊 Changes summary:\n';
     output += await execGitCommand(`cd '${dir}' && git diff --staged --stat 2>/dev/null`, { silent: true });
     output += '\n\n### 📄 FULL CONTENT OF STAGED CHANGES:\n';
@@ -172,11 +176,9 @@ async function showUnstagedChanges(dir: string): Promise<{ hasFiles: boolean; ou
 async function getChangesInfo(dir: string): Promise<string> {
   let output = '## 📝 Current Changes\n\n';
   
-  const [staged, unstaged, untracked] = await Promise.all([
-    showStagedChanges(dir),
-    showUnstagedChanges(dir),
-    showUntrackedFiles(dir)
-  ]);
+  const staged = await showStagedChanges(dir);
+  const unstaged = await showUnstagedChanges(dir);
+  const untracked = await showUntrackedFiles(dir);
   
   if (staged.hasFiles) {
     output += staged.output;
@@ -272,11 +274,11 @@ async function getConfigInfo(dir: string): Promise<string> {
   output += '\n';
   
   output += '### Important settings:\n';
-  const [userName, userEmail, coreEditor] = await Promise.all([
-    execGitCommand(`cd '${dir}' && git config user.name 2>/dev/null`, { silent: true }),
-    execGitCommand(`cd '${dir}' && git config user.email 2>/dev/null`, { silent: true }),
-    execGitCommand(`cd '${dir}' && git config core.editor 2>/dev/null`, { silent: true })
-  ]);
+  
+  const userName = await execGitCommand(`cd '${dir}' && git config user.name 2>/dev/null`, { silent: true });
+  const userEmail = await execGitCommand(`cd '${dir}' && git config user.email 2>/dev/null`, { silent: true });
+  const coreEditor = await execGitCommand(`cd '${dir}' && git config core.editor 2>/dev/null`, { silent: true });
+  
   
   output += `user.name: ${userName || 'Not set'}\n`;
   output += `user.email: ${userEmail || 'Not set'}\n`;
@@ -288,13 +290,14 @@ async function getConfigInfo(dir: string): Promise<string> {
 // Main function
 async function ShowallGit(
   targetDir: string = process.cwd(),
-  outputDir: string = process.cwd()
+  outputDir: string = process.cwd(),
+  verbose: boolean = true
 ) {
   // Initialize logger with settings from main script
   if (!logger) {
     logger = new Logger();
   }
-  
+  logger.verbose = verbose;
   // Resolve paths using Bun
   const absoluteTarget = resolve(targetDir);
   const absoluteOutput = resolve(outputDir);
@@ -306,13 +309,13 @@ async function ShowallGit(
   
   const repoName = await getRepoName(absoluteTarget);
   const timestamp = new Date().toISOString().replace(/[-:]/g, '').split('.')[0].replace(/T/g, '_');
-  const outputFile = join(absoluteOutput, `GIT_FULL_INFO_${repoName}_${timestamp}.log`);
-  
+  const fileName = `GIT_FULL_INFO_${repoName}_${timestamp}.log`;
+  const outputFile = join(absoluteOutput, fileName);
+
   logger.info(`Starting Git repository information collection...`);
   logger.info(`Repository: ${repoName}`);
   logger.info(`Target directory: ${absoluteTarget}`);
-  logger.info(`Output file: ${outputFile}`);
-  console.log('');
+  logger.newLine();
   
   let content = '';
   
@@ -335,16 +338,31 @@ async function ShowallGit(
   const lastCommitDate = await execGitCommand(`cd '${absoluteTarget}' && git log -1 --format="%ci" 2>/dev/null`, { silent: true });
   content += `Last commit date: ${lastCommitDate || 'No commits'}\n\n`;
   
-  // Collect all information in parallel where possible
-  const [authorStats, branchInfo, commitHistory, changesInfo, tagInfo, configInfo] = await Promise.all([
-    getAuthorStats(absoluteTarget),
-    getBranchInfo(absoluteTarget),
-    getCommitHistory(absoluteTarget),
-    getChangesInfo(absoluteTarget),
-    getTagInfo(absoluteTarget),
-    getConfigInfo(absoluteTarget)
-  ]);
-  
+  // Collect all information in parallel where possible 
+  logger.vinfo('📊 Collecting author statistics...');
+  const authorStats = await getAuthorStats(absoluteTarget);
+  logger.vinfo('✅ Author statistics collected');
+
+  logger.vinfo('🌿 Collecting branch information...');
+  const branchInfo = await getBranchInfo(absoluteTarget);
+  logger.vinfo('✅ Branch information collected');
+
+  logger.vinfo('📜 Collecting commit history...');
+  const commitHistory = await getCommitHistory(absoluteTarget);
+  logger.vinfo('✅ Commit history collected');
+
+  logger.vinfo('📝 Collecting changes information...');
+  const changesInfo = await getChangesInfo(absoluteTarget);
+  logger.vinfo('✅ Changes information collected');
+
+  logger.vinfo('🏷️ Collecting tag information...');
+  const tagInfo = await getTagInfo(absoluteTarget);
+  logger.vinfo('✅ Tag information collected');
+
+  logger.vinfo('⚙️ Collecting configuration information...');
+  const configInfo = await getConfigInfo(absoluteTarget);
+  logger.vinfo('✅ Configuration information collected');
+
   content += '## 👥 Contributors\n\n';
   content += authorStats + '\n\n';
   content += branchInfo;
@@ -356,7 +374,10 @@ async function ShowallGit(
   // Git objects info
   content += '## 🗄️ Git Objects\n';
   content += '### Object count:\n';
-  content += await execGitCommand(`cd '${absoluteTarget}' && git count-objects -v 2>/dev/null`, { silent: true }) || 'No objects found\n';
+  content += await execGitCommand(
+    `cd '${absoluteTarget}' && git count-objects -v 2>/dev/null`,
+    { silent: true }
+  ) || 'No objects found\n';
   content += '\n';
   
   // Reflog
@@ -366,11 +387,11 @@ async function ShowallGit(
   
   // Summary
   content += '## 📈 Summary\n';
-  const [branchCount, tagCount, stashCount] = await Promise.all([
-    execGitCommand(`cd '${absoluteTarget}' && git branch | wc -l`, { silent: true }),
-    execGitCommand(`cd '${absoluteTarget}' && git tag | wc -l`, { silent: true }),
-    execGitCommand(`cd '${absoluteTarget}' && git stash list | wc -l 2>/dev/null`, { silent: true })
-  ]);
+  
+  const branchCount = await execGitCommand(`cd '${absoluteTarget}' && git branch | wc -l`, { silent: true });
+  const tagCount = await execGitCommand(`cd '${absoluteTarget}' && git tag | wc -l`, { silent: true });
+  const stashCount = await execGitCommand(`cd '${absoluteTarget}' && git stash list | wc -l 2>/dev/null`, { silent: true });
+  
   
   content += `Total branches: ${branchCount.trim()}\n`;
   content += `Total tags: ${tagCount.trim()}\n`;
@@ -378,43 +399,45 @@ async function ShowallGit(
   
   // Change statistics
   content += '## 🔄 Change Statistics\n';
-  const [stagedCount, unstagedCount, untrackedCount] = await Promise.all([
-    execGitCommand(`cd '${absoluteTarget}' && git diff --staged --name-only | wc -l`, { silent: true }),
-    execGitCommand(`cd '${absoluteTarget}' && git diff --name-only | wc -l`, { silent: true }),
-    execGitCommand(`cd '${absoluteTarget}' && git ls-files --others --exclude-standard | wc -l`, { silent: true })
-  ]);
+  
+  const stagedCount = await execGitCommand(`cd '${absoluteTarget}' && git diff --staged --name-only | wc -l`, { silent: true });
+  const unstagedCount = await execGitCommand(`cd '${absoluteTarget}' && git diff --name-only | wc -l`, { silent: true });
+  const untrackedCount = await execGitCommand(`cd '${absoluteTarget}' && git ls-files --others --exclude-standard | wc -l`, { silent: true });
+  
   
   content += `Staged files: ${stagedCount.trim()}\n`;
   content += `Unstaged files: ${unstagedCount.trim()}\n`;
   content += `Untracked files: ${untrackedCount.trim()}\n\n`;
   
   content += '# 🎯 Collection completed successfully!\n';
+  content += '# Please Write for me commit message\n';
   
   // Write to file
   await Bun.write(outputFile, content);
   
-  // Display summary
+  // return;
   logger.success('✅ Git collection completed!');
-  console.log('');
-  console.log(`📄 Output file: ${outputFile}`);
+  logger.info(`Output file: ${outputFile}`);
+  logger.newLine();
+
   
   const fileStats = await Bun.file(outputFile).stat();
   const fileSize = (fileStats.size / 1024).toFixed(2);
-  console.log(`📊 File size: ${fileSize} KB`);
+  logger.log(`📊 File size: ${fileSize} KB`);
   
   const lineCount = content.split('\n').length;
-  console.log(`📈 Total lines: ${lineCount}`);
-  console.log('');
+  logger.log(`📈 Total lines: ${lineCount}`);
+  logger.newLine();
   
   // Show quick stats
   logger.info('Quick repository stats:');
-  console.log(`├─ Commits: ${await getTotalCommits(absoluteTarget)}`);
-  console.log(`├─ Branches: ${branchCount.trim()}`);
-  console.log(`├─ Tags: ${tagCount.trim()}`);
-  console.log(`├─ Staged files: ${stagedCount.trim()}`);
-  console.log(`├─ Unstaged files: ${unstagedCount.trim()}`);
-  console.log(`└─ Untracked files: ${untrackedCount.trim()}`);
-  console.log('');
+  logger.log(`├─ Commits: ${await getTotalCommits(absoluteTarget)}`);
+  logger.log(`├─ Branches: ${branchCount.trim()}`);
+  logger.log(`├─ Tags: ${tagCount.trim()}`);
+  logger.log(`├─ Staged files: ${stagedCount.trim()}`);
+  logger.log(`├─ Unstaged files: ${unstagedCount.trim()}`);
+  logger.log(`└─ Untracked files: ${untrackedCount.trim()}`);
+  logger.newLine();
   
   logger.warning('💡 Tip: Use "gzip" to compress the output file');
 }
