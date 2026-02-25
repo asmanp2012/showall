@@ -86,13 +86,14 @@ function getStatusDisplay(status: string): string {
 
 // List files with their status
 async function listFilesWithStatus(dir: string, files: string[], type: 'staged' | 'unstaged'): Promise<string> {
-  const results = await Promise.all(
-    files.map(async file => {
-      const status = await getFileStatus(dir, file, type);
-      const statusDisplay = getStatusDisplay(status);
-      return `  - ${statusDisplay} ${file}`;
-    })
-  );
+  const results: string[] = [];
+  
+  for (const file of files) {
+    const status = await getFileStatus(dir, file, type);
+    const statusDisplay = getStatusDisplay(status);
+    results.push(`  - ${statusDisplay} ${file}`);
+  }
+  
   return results.join('\n');
 }
 
@@ -140,7 +141,10 @@ async function showUntrackedFiles(dir: string): Promise<{ hasFiles: boolean; out
 
 // Show staged changes
 async function showStagedChanges(dir: string): Promise<{ hasFiles: boolean; output: string }> {
-  const staged = (await execGitCommand(`cd '${dir}' && git diff --staged --name-only 2>/dev/null`, { silent: true }))
+  const staged = (await execGitCommand(
+    `cd '${dir}' && git diff --staged --name-only 2>/dev/null`, 
+    { silent: true,}
+  ))
     .split('\n')
     .filter(Boolean);
   
