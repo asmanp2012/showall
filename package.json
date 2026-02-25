@@ -1,0 +1,19 @@
+{
+  "name": "showall",
+  "version": "2.1.0",
+  "description": "Complete Project Analysis Tool",
+  "main": "bin/showall",
+  "bin": {
+    "showall": "./bin/showall"
+  },
+  "scripts": {
+    "showall": "bun run bin/showall"
+  },
+  "keywords": ["git", "analysis", "code-collector", "cleanup"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "bun": "latest",
+    "glob": "^10.0.0"
+  }
+}
