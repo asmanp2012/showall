@@ -16,12 +16,14 @@ let logger: Logger;
 // Execute git command and return output
 async function execGitCommand(
   command: string,
-  options: { silent?: boolean } = {}
+  options: { silent?: boolean, trim?: boolean } = {}
 ): Promise<string> {
+  const newOptions = { ...{ trim: true }, ...options};
   try {
     // برای دستورات git باید از bash استفاده کنیم
     const result = await $`bash -c ${command}`.text();
-    return result.trim();
+    if(newOptions.trim == true) return result.trim()
+    return result;
   } catch (e: any) {
     if (!options.silent) {
       logger?.error(`Failed to execute: ${command}`);
@@ -45,7 +47,10 @@ async function checkGitRepo(dir: string): Promise<boolean> {
 
 // Get repository name
 async function getRepoName(dir: string): Promise<string> {
-  const topLevel = await execGitCommand(`cd '${dir}' && git rev-parse --show-toplevel`, { silent: true });
+  const topLevel = await execGitCommand(
+    `cd '${dir}' && git rev-parse --show-toplevel`,
+    { silent: true }
+  );
   return topLevel.split('/').pop() || '';
 }
 
@@ -232,9 +237,14 @@ async function getCommitHistory(dir: string): Promise<string> {
   output += await execGitCommand(`cd '${dir}' && git log --oneline -20 --graph --decorate 2>/dev/null`, { silent: true }) + '\n\n';
   
   output += '### Commits per day (last 30 days):\n';
-  output += await execGitCommand(`cd '${dir}' && git log --since="30 days ago" --pretty=format:"%ad" --date=short 2>/dev/null | sort | uniq -c`, { silent: true }) + '\n\n';
+  output += await execGitCommand(
+    `cd '${dir}' && git log --since="30 days ago" --pretty=format:"%ad" --date=short 2>/dev/null | sort | uniq -c`,
+    {
+      silent: true,
+      trim: false
+    }) + '\n\n';
   
-  output += '### Detailed recent commits:\n';
+  output += '### Detailed recent commits:\n\n';
   const detailedLog = await execGitCommand(
     `cd '${dir}' && git log -5 --pretty=format:"%n🔹 Commit: %H%n📅 Date: %ci%n👤 Author: %an <%ae>%n📝 Message: %s%n📄 Files changed:%n%b" --stat 2>/dev/null`,
     { silent: true }
@@ -383,7 +393,7 @@ async function ShowallGit(
   // Reflog
   content += '## 📋 Reflog (last 20 entries)\n';
   content += await execGitCommand(`cd '${absoluteTarget}' && git reflog show -20 2>/dev/null`, { silent: true }) || 'No reflog data\n';
-  content += '\n';
+  content += '\n\n';
   
   // Summary
   content += '## 📈 Summary\n';
