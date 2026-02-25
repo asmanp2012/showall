@@ -9,12 +9,18 @@ const SCRIPT_NAME = "showall_file";
 const SCRIPT_DESCRIPTION = "Project code files collector";
 const SCRIPT_VERSION = "2.0.0";
 
-// Initialize logger
+// Initialize logger (will be configured in main function)
 let logger: Logger;
 
 // Define patterns for find files
 const PATTERNS = [
-    // Files with specific extensions
+    // Files without dots in name (no extension, not starting with dot)
+    '[^.]*', 
+    
+    // Files start with dots in name (starting with dot)
+    '.*', 
+    
+    // Files with extension
     '*.py', '*.php', '*.go', '*.rb', '*.rs', '*.swift', '*.kt', '*.scala',
     '*.cpp', '*.c', '*.h', '*.hpp', '*.r', '*.R', '*.dart',
     '*.java', '*.clj', '*.cljs', '*.cljc', '*.properties',
@@ -31,7 +37,7 @@ const PATTERNS = [
     '*.config', '.env*', '*.env', '*.vim', '.vimrc', '*.ini', '*.cfg', '*.conf', '*.tf', '*.tfvars',
 
     // Important config files without extension
-    '.env',
+    '*.env',
 
     // Project files
     'Dockerfile', 'Dockerfile.*',
@@ -55,7 +61,7 @@ const IGNORE_PATTERNS = [
     // Data and database files
     '*.db', '*.sqlite', '*.sqlite3', '*.mdb',
 
-    // Media and binary files
+    // Media and binary files (excluding SVG which is text-based)
     '*.jpg', '*.jpeg', '*.png', '*.gif', '*.bmp', '*.ico', '*.mp3', '*.mp4', '*.avi', '*.mov',
     '*.pdf', '*.doc', '*.docx', '*.xls', '*.xlsx', '*.ppt', '*.pptx',
 
@@ -70,7 +76,7 @@ const IGNORE_PATTERNS = [
     '.DS_Store', 'Thumbs.db', 'desktop.ini',
 
     // IDE files
-    '.idea', '.vscode', '*.code-workspace'
+    '.idea/*', '.vscode/*', '*.code-workspace'
 ];
 
 // Define exclude directories
@@ -90,7 +96,6 @@ const EXCLUDE_DIRS = [
     'target',
     'out',
     'obj',
-    'bin',
     'logs',
     'tmp',
     'temp',
@@ -113,16 +118,26 @@ interface Stats {
     skippedFiles: string[];
 }
 
-// تابع کمکی برای پاکسازی مسیر
+// Clean path from newlines and trim
 function cleanPath(path: string): string {
     return path.replace(/\n/g, '').replace(/\r/g, '').trim();
 }
 
+// Check if directory exists
+async function directoryExists(dir: string): Promise<boolean> {
+    try {
+        const result = await $`test -d "${dir}" && echo "true" || echo "false"`.text();
+        return result.trim() === "true";
+    } catch {
+        return false;
+    }
+}
+
+// Walk directory recursively and collect files
 async function walkDirectory(dir: string, baseDir: string = dir): Promise<FileInfo[]> {
     const files: FileInfo[] = [];
     
     try {
-        // استفاده از Bun.file().exists() به جای readdir
         const dirPath = cleanPath(dir);
         const entries = await $`find "${dirPath}" -maxdepth 1 -printf "%P\\n" 2>/dev/null`.text();
         
@@ -131,10 +146,11 @@ async function walkDirectory(dir: string, baseDir: string = dir): Promise<FileIn
             const relativePath = relative(baseDir, fullPath);
             
             // Check if directory
-            const isDir = (await $`test -d "${fullPath}" && echo "true" || echo "false"`.text()).trim() === "true";
+            const isDir = await directoryExists(fullPath);
             
             if (isDir) {
                 if (EXCLUDE_DIRS.includes(entry)) {
+                    logger?.vinfo(`Skipping excluded directory: ${entry}`);
                     continue;
                 }
                 const subFiles = await walkDirectory(fullPath, baseDir);
@@ -149,6 +165,7 @@ async function walkDirectory(dir: string, baseDir: string = dir): Promise<FileIn
             
             // Check if file matches ignore patterns
             if (matchesPattern(entry, IGNORE_PATTERNS)) {
+                logger?.vinfo(`Skipping ignored file pattern: ${entry}`);
                 continue;
             }
             
@@ -157,6 +174,7 @@ async function walkDirectory(dir: string, baseDir: string = dir): Promise<FileIn
             
             // Skip empty files
             if (fileStats.size === 0) {
+                logger?.vinfo(`Skipping empty file: ${relativePath}`);
                 continue;
             }
             
@@ -169,16 +187,15 @@ async function walkDirectory(dir: string, baseDir: string = dir): Promise<FileIn
                 isBinary
             });
         }
-    } catch (err) {
+    } catch (err: any) {
         // Skip permission errors
-        if (!options?.silent) {
-            logger?.debug(`Permission denied: ${dir}`);
-        }
+        logger?.debug(`Permission denied accessing: ${dir} - ${err.message}`);
     }
     
     return files;
 }
 
+// Check if filename matches any pattern
 function matchesPattern(filename: string, patterns: string[]): boolean {
     return patterns.some(pattern => {
         // Convert glob pattern to regex
@@ -191,11 +208,12 @@ function matchesPattern(filename: string, patterns: string[]): boolean {
     });
 }
 
+// Check if file is binary
 async function isBinaryFile(filePath: string): Promise<boolean> {
     try {
         const file = Bun.file(filePath);
         const buffer = await file.arrayBuffer();
-        const sample = new Uint8Array(buffer.slice(0, 512));
+        const sample = new Uint8Array(buffer.slice(0, 1024)); // Check first 1KB
         
         // Check for null bytes and control characters
         for (let i = 0; i < sample.length; i++) {
@@ -208,10 +226,11 @@ async function isBinaryFile(filePath: string): Promise<boolean> {
         }
         return false;
     } catch {
-        return true;
+        return true; // If can't read, assume binary
     }
 }
 
+// Get file type for language comment
 function getFileType(filePath: string): string {
     const ext = extname(filePath).toLowerCase();
     const filename = basename(filePath);
@@ -304,13 +323,14 @@ function getFileType(filePath: string): string {
     return '# File';
 }
 
+// Generate directory tree structure
 async function generateDirectoryTree(dir: string): Promise<string> {
     let tree = '';
     const cleanDir = cleanPath(dir);
     
     async function buildTree(currentPath: string, prefix: string = ''): Promise<void> {
         try {
-            const entries = await $`find "${currentPath}" -maxdepth 1 -printf "%P\\n" 2>/dev/null`.text();
+            const entries = await $`find "${currentPath}" -maxdepth 1 -printf "%P\\n" 2>/dev/null | sort`.text();
             const filteredEntries = entries.split('\n')
                 .filter(Boolean)
                 .filter(name => !EXCLUDE_DIRS.includes(name));
@@ -321,17 +341,18 @@ async function generateDirectoryTree(dir: string): Promise<string> {
                 const fullPath = join(currentPath, entry);
                 
                 // Check if directory
-                const isDir = (await $`test -d "${fullPath}" && echo "true" || echo "false"`.text()).trim() === "true";
+                const isDir = await directoryExists(fullPath);
                 
-                tree += `${prefix}${isLast ? '└── ' : '├── '}${entry}\n`;
+                tree += `${prefix}${isLast ? '└── ' : '├── '}${entry}${isDir ? '/' : ''}\n`;
                 
                 if (isDir) {
                     const newPrefix = prefix + (isLast ? '    ' : '│   ');
                     await buildTree(fullPath, newPrefix);
                 }
             }
-        } catch (err) {
+        } catch (err: any) {
             // Skip permission errors
+            logger?.debug(`Permission denied building tree for: ${currentPath} - ${err.message}`);
         }
     }
     
@@ -354,8 +375,13 @@ async function ShowallFile(
     const absoluteTarget = cleanPath(resolve(targetDir));
     const absoluteOutput = cleanPath(resolve(outputDir));
     
-    // Check if target directory exists using Bun
-    const targetExists = await Bun.file(absoluteTarget).exists();
+    logger.info(`Starting file collection (${SCRIPT_NAME} v${SCRIPT_VERSION})...`);
+    logger.info(`Target directory: ${absoluteTarget}`);
+    logger.info(`Output directory: ${absoluteOutput}`);
+    logger.newLine();
+    
+    // Check if target directory exists
+    const targetExists = await directoryExists(absoluteTarget);
     if (!targetExists) {
         logger.error(`Directory '${absoluteTarget}' does not exist!`);
         process.exit(1);
@@ -366,15 +392,12 @@ async function ShowallFile(
     const outputFile = `PROJECT_FULL_${repoName}_${timestamp}.log`;
     const outputPath = join(absoluteOutput, outputFile);
     
-    logger.info(`Starting file collection...`);
-    logger.info(`Target directory: ${absoluteTarget}`);
-    logger.info(`Output file: ${outputPath}`);
-    console.log('');
-    
-    logger.info('Scanning directory...');
+    logger.info('Scanning directory for files...');
     
     // Collect all files
-    const files = await walkDirectory(absoluteTarget);
+    const files = await logger.withSpinner('Collecting files', async () => {
+        return await walkDirectory(absoluteTarget);
+    });
     
     const stats: Stats = {
         totalFound: files.length,
@@ -386,6 +409,8 @@ async function ShowallFile(
     
     let content = '';
     let fileCounter = 0;
+    
+    logger.vinfo(`Found ${files.length} files matching patterns`);
     
     // Header
     content += '# 📦 Complete Project Code Collection (No Limits)\n';
@@ -402,6 +427,7 @@ async function ShowallFile(
     content += `Date: ${new Date().toLocaleString()}\n\n`;
     
     // Directory Structure
+    logger.vinfo('Generating directory tree...');
     content += '### Directory Structure:\n';
     content += '```\n';
     content += await generateDirectoryTree(absoluteTarget);
@@ -417,10 +443,13 @@ async function ShowallFile(
     // File Contents
     content += '## 📄 Complete File Contents\n\n';
     
+    logger.info(`Processing ${files.length} files...`);
+    
     for (const file of files) {
         if (file.isBinary) {
             stats.skippedBinary++;
             stats.skippedFiles.push(`${file.path} (binary, ${Math.round(file.size/1024)}KB)`);
+            logger.vinfo(`Skipping binary file: ${file.path} (${Math.round(file.size/1024)}KB)`);
             continue;
         }
         
@@ -446,11 +475,18 @@ async function ShowallFile(
             
             content += '\n```\n';
             content += '\n---\n\n';
-        } catch (err) {
+            
+            if (fileCounter % 10 === 0) {
+                logger.progress(fileCounter, files.length, 'Processing files');
+            }
+        } catch (err: any) {
             // Skip files that can't be read
             stats.skippedByPattern++;
+            logger.vinfo(`Error reading file ${file.path}: ${err.message}`);
         }
     }
+    
+    logger.progress(files.length, files.length, 'Processing files');
     
     // Summary
     content += '## 📊 Final Summary\n';
@@ -481,28 +517,35 @@ async function ShowallFile(
     content += `- Files skipped (error): ${stats.skippedByPattern}\n`;
     
     // Write to file using Bun
-    await Bun.write(outputPath, content);
+    await logger.withSpinner('Writing output file', async () => {
+        await Bun.write(outputPath, content);
+    });
     
     // Show results
     logger.success('✅ File collection completed!');
-    console.log('');
-    console.log(`📄 Output file: ${outputFile}`);
-    console.log(`📁 Path: ${absoluteOutput}/`);
+    logger.newLine();
+    logger.log(`📄 Output file: ${outputFile}`);
+    logger.log(`📁 Path: ${absoluteOutput}/`);
     
     const fileStats = await Bun.file(outputPath).stat();
-    console.log(`📊 File size: ${Math.round(fileStats.size / 1024)} KB`);
+    logger.log(`📊 File size: ${Math.round(fileStats.size / 1024)} KB`);
     
     const lineCount = content.split('\n').length;
-    console.log(`📈 Total lines: ${lineCount}`);
-    console.log('');
-    console.log(`🔍 Files processed: ${stats.processed}`);
-    console.log(`⏭️  Files skipped (binary): ${stats.skippedBinary}`);
-    console.log(`🚫 Files skipped (error): ${stats.skippedByPattern}`);
-    console.log('');
+    logger.log(`📈 Total lines: ${lineCount}`);
+    logger.newLine();
+    
+    logger.log(`🔍 Files processed: ${stats.processed}`);
+    if (stats.skippedBinary > 0) {
+        logger.log(`⏭️  Files skipped (binary): ${stats.skippedBinary}`);
+    }
+    if (stats.skippedByPattern > 0) {
+        logger.log(`🚫 Files skipped (error): ${stats.skippedByPattern}`);
+    }
+    logger.newLine();
     
     logger.warning('💡 Tip: If the file gets too large, you can compress it with gzip:');
-    console.log(`    gzip ${outputFile}`);
-    console.log('');
+    logger.log(`    gzip ${outputFile}`);
+    logger.newLine();
 }
 
 export {
