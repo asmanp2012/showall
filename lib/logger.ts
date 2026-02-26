@@ -2,7 +2,11 @@
 // Logger class for showall project
 
 export class Logger {
-  private colors = {
+  colors = {
+    ORANGE: '\x1b[38;5;208m',
+    PURPLE: '\x1b[38;5;129m',
+    TEAL: '\x1b[38;5;37m',
+    LIME: '\x1b[38;5;154m',
     RED: '\x1b[31m',
     GREEN: '\x1b[32m',
     YELLOW: '\x1b[33m',
@@ -167,11 +171,11 @@ export class Logger {
     try {
       const result = await fn();
       clearInterval(spinner);
-      process.stdout.write(`\r${this.colors.GREEN}✓${this.colors.NC} ${message}... done.\n`);
+      process.stdout.write(`\r${this.colors.GREEN}✓${this.colors.NC} ${message}... ${this.colors.GREEN}done.\n`);
       return result;
     } catch (error) {
       clearInterval(spinner);
-      process.stdout.write(`\r${this.colors.RED}✗${this.colors.NC} ${message}... failed.\n`);
+      process.stdout.write(`\r${this.colors.RED}✗${this.colors.NC} ${message}... ${this.colors.RED}failed.\n`);
       throw error;
     }
   }

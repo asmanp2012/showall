@@ -114,8 +114,19 @@ async function showFullFileChanges(dir: string, files: string[], type: 'staged' 
         ? `cd '${dir}' && git diff --staged -- '${file}'`
         : `cd '${dir}' && git diff -- '${file}'`;
       
-      const diff = await execGitCommand(cmd, { silent: true });
-      output += diff;
+      const diff = await execGitCommand(cmd, { silent: true, trim: false });
+      
+      if (diff && diff.trim()) {
+        output += diff;
+      }
+      else 
+      {
+        const fileContent = await Bun.file(fullPath).text();
+        output += `// File has changes but diff is empty\n`;
+        output += `// Current file content:\n`;
+        output += fileContent.substring(0, 500) + '...\n';
+      }
+
       output += '```\n\n---\n';
     }
   }
@@ -352,30 +363,33 @@ async function ShowallGit(
   const lastCommitDate = await execGitCommand(`cd '${absoluteTarget}' && git log -1 --format="%ci" 2>/dev/null`, { silent: true });
   content += `Last commit date: ${lastCommitDate || 'No commits'}\n\n`;
   
-  // Collect all information in parallel where possible 
-  logger.vinfo('📊 Collecting author statistics...');
-  const authorStats = await getAuthorStats(absoluteTarget);
-  logger.vinfo('✅ Author statistics collected');
+  // Collect all information in parallel where possible
+  logger.log('Collecting some statistics from git ...')
+  const authorStats = await logger.withSpinner(`📊 ${logger.colors.CYAN}Author ...`, async () => {
+    return await getAuthorStats(absoluteTarget);
+  });
 
-  logger.vinfo('🌿 Collecting branch information...');
-  const branchInfo = await getBranchInfo(absoluteTarget);
-  logger.vinfo('✅ Branch information collected');
+  const branchInfo = await logger.withSpinner(`🌿 ${logger.colors.GREEN}branch ...`, async () => {
+    return await getBranchInfo(absoluteTarget);
+  });
 
-  logger.vinfo('📜 Collecting commit history...');
-  const commitHistory = await getCommitHistory(absoluteTarget);
-  logger.vinfo('✅ Commit history collected');
+  const commitHistory = await logger.withSpinner(`📜 ${logger.colors.MAGENTA}commit history...`, async () => {
+    return await getCommitHistory(absoluteTarget);
+  });
 
-  logger.vinfo('📝 Collecting changes information...');
-  const changesInfo = await getChangesInfo(absoluteTarget);
-  logger.vinfo('✅ Changes information collected');
+  const changesInfo = await logger.withSpinner(`📝 ${logger.colors.ORANGE}changes ...`, async () => {
+    return await getChangesInfo(absoluteTarget);
+  });
 
-  logger.vinfo('🏷️ Collecting tag information...');
-  const tagInfo = await getTagInfo(absoluteTarget);
-  logger.vinfo('✅ Tag information collected');
+  const tagInfo = await logger.withSpinner(`🏷️ ${logger.colors.PURPLE}tag ...`, async () => {
+    return await getTagInfo(absoluteTarget);
+  });
 
-  logger.vinfo('⚙️ Collecting configuration information...');
-  const configInfo = await getConfigInfo(absoluteTarget);
-  logger.vinfo('✅ Configuration information collected');
+  const configInfo = await logger.withSpinner(`⚙️ ${logger.colors.TEAL}configuration ...`, async () => {
+    return await getConfigInfo(absoluteTarget);
+  });
+  logger.success('✅ Collect statistics completed!');
+  logger.newLine();
 
   content += '## 👥 Contributors\n\n';
   content += authorStats + '\n\n';
@@ -429,8 +443,10 @@ async function ShowallGit(
   // Write to file
   await Bun.write(outputFile, content);
   
-  // return;
-  logger.success('✅ Git collection completed!');
+  // ###########################################################################################
+  // ###########################################################################################
+  // ###########################################################################################
+  logger.newLine();
   logger.info(`Output file: ${outputFile}`);
   logger.newLine();
 
