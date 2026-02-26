@@ -54,7 +54,7 @@ ${logger.color('Commands:', 'GREEN')}
 ${logger.color('Options:', 'GREEN')}
   -f, --file              Run file collector
   -g, --git               Run git collector
-  -c, --clean             Run clean command
+  -c, --clean --clear     Run clean command
   -m, --mode=MODE         Specify collector mode (git, file, all, clean)
   -t, --target=DIR        Target directory to analyze (default: current directory)
   -o, --output=DIR        Output directory for generated files (default: current directory)
@@ -143,6 +143,7 @@ async function parseArgs(args: string[]) {
 
             case '-c':
             case '--clean':
+            case '--clear':
                 COMMAND = 'clean';
                 i++;
                 break;
