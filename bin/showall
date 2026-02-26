@@ -51,35 +51,43 @@ ${logger.color('Commands:', 'GREEN')}
   clean       Clean up generated output files
   help        Show this help message
 
-${logger.color('Clean Command Options:', 'GREEN')}
-  -c, --clean          Run clean command (can be used with patterns)
-  --dry-run           Show what would be deleted without deleting
-  --older-than MIN    Only delete files older than MIN minutes
-  --pattern PATTERN   Custom pattern to clean (can be used multiple times)
-  -i, --interactive   Ask for confirmation before deleting
-
-${logger.color('General Options:', 'GREEN')}
-  -v, --verbose       Enable verbose output
-  -q, --quiet         Suppress non-error output
-  -o, --output DIR    Specify output directory (default: current directory)
-  -f, --force         Force operation (skip confirmations)
+${logger.color('Options:', 'GREEN')}
+  -f, --file              Run file collector
+  -g, --git               Run git collector
+  -c, --clean             Run clean command
+  -m, --mode=MODE         Specify collector mode (git, file, all, clean)
+  -t, --target=DIR        Target directory to analyze (default: current directory)
+  -o, --output=DIR        Output directory for generated files (default: current directory)
+  -v, --verbose           Enable verbose output
+  -q, --quiet             Suppress non-error output
+  -h, --help              Show this help message
+  --version               Show version information
 
 ${logger.color('Examples:', 'GREEN')}
+  # Basic usage
   showall git                    # Git info from current directory
   showall file /path/to/project  # Code from specific path
   showall all -v                  # Everything with verbose output
+  showall -t=/path/to/project -o=/path/to/output  # Specify target and output
   
-  # Clean commands
+  # Using mode option
+  showall --mode=git              # Git collector
+  showall --mode=file --target=/project  # File collector with target
+  
+  # Clean command
   showall clean                   # Clean default patterns
-  showall clean --dry-run         # Show what would be deleted
-  showall clean --older-than 60   # Clean files older than 60 minutes
-  showall clean --pattern "*.tmp" # Clean custom pattern
-  showall clean -i                 # Interactive mode
+  showall clean /path/to/project  # Clean in specific directory
+  
+  # Combined options
+  showall all -t ~/projects/myapp -o ./output -v  # Analyze app with verbose output
 
 ${logger.color('Output files:', 'GREEN')}
   Git collector:     GIT_FULL_INFO_*_*.log
   File collector:    PROJECT_FULL_*.log
   Log file:          .showall.log
+
+${logger.color('Version information:', 'GREEN')}
+  Run 'showall --version' to see detailed version info for all collectors
 `);
 }
 
@@ -101,7 +109,7 @@ async function parseArgs(args: string[]) {
     let TARGET_DIR = "";
     
     const VALID_COMMANDS = [
-        'git', 'file', 'all', 'clean'
+        'git', 'file', 'all', 'clean', 'help'
     ];
 
     while (i < args.length) {
@@ -117,6 +125,10 @@ async function parseArgs(args: string[]) {
         let argType = arg.split('=');
 
         switch (argType[0]) {
+            case '-h':
+            case '--help':
+                showHelp();
+                process.exit(0);
             case '-f':
             case '--file':
                 COMMAND = 'file';
@@ -186,11 +198,6 @@ async function parseArgs(args: string[]) {
                 i++;
                 break;
 
-            case '-h':
-            case '--help':
-                showHelp();
-                process.exit(0);
-
             case '--version':
                 showVersion();
                 process.exit(0);
@@ -235,6 +242,9 @@ async function main() {
     
     // Run command
     switch (COMMAND) {
+        case 'help':
+            showHelp();
+            break;
         case 'git':
             await ShowallGit(targetPath, outputPath);
             break;
