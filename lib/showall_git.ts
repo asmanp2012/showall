@@ -61,7 +61,16 @@ async function getTotalCommits(dir: string): Promise<string> {
 
 // Get author statistics
 async function getAuthorStats(dir: string): Promise<string> {
-  return await execGitCommand(`cd '${dir}' && git shortlog -s -n --all 2>/dev/null`, { silent: true });
+  
+  const commitCount = await execGitCommand(
+    `cd '${dir}' && git rev-list --count HEAD 2>/dev/null`,
+    { silent: true }
+  );
+  
+  if (!commitCount || parseInt(commitCount) === 0) {
+    return 'ℹ️ No commits yet in this repository\n';
+  }
+  return await execGitCommand(`cd '${dir}' && git shortlog -s -n --all`, { silent: true });
 }
 
 // Get file status (A, M, D, R)
